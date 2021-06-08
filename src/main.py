@@ -406,7 +406,15 @@ class Terrain(Rigidbody):
 
     def render(self, camera):
         screenPoints = [camera.worldToScreen(self.position + vertex).toTuple() for vertex in self.vertices]
-        pygame.draw.polygon(screen, (54, 34, 5), screenPoints)
+        screenPoints = [point for point in screenPoints if point[0] > 0 and point[0] > 0 and point[0] < WIDTH and point[1] < HEIGHT]
+        
+        if len(screenPoints) > 0:
+            screenPoints.append((WIDTH, screenPoints[-1][1]))
+            screenPoints.append((WIDTH, HEIGHT))
+            screenPoints.append((0, HEIGHT))
+            screenPoints.append((0, screenPoints[0][1]))
+
+            pygame.draw.polygon(screen, (54, 34, 5), screenPoints)
 
 class Thruster():
     def __init__(self, lander, pos):
@@ -991,7 +999,7 @@ while running:
             if event.key == pygame.K_r:
                 resetGame()
             if event.key == pygame.K_m:
-                gotoMenu()
+                gotoMenu(gotoMenuButton)
 
         for button in buttons:
             if event.type == pygame.MOUSEBUTTONDOWN:
