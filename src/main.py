@@ -13,12 +13,14 @@ from threading import Timer
 import shelve
 import pygame
 
+# Check if shelf has key and if so, return it
 def shelfHasKey(shelf, key):
     try:
         return shelf[key]
     except:
         return False
 
+# Check if kwarg item exists and retrun it
 def defaultKWArg(kwargs, name, defaultValue):
     if name in kwargs:
         return kwargs[name]
@@ -56,6 +58,7 @@ def linesIntersect(X, Y, A, B):
 
   return True
 
+# Check if a point is inside polygon by drawing a ray from the point and checking if the number if intersections are not even
 def pointInPolygon(point, polygon):
   intersections = 0
   
@@ -85,6 +88,7 @@ def lineToLine(p0_x, p0_y, p1_x, p1_y, p2_x, p2_y, p3_x, p3_y):
 def lineToLine2(p0, p1, p2, p3):
     return lineToLine(p0.x, p0.y, p1.x, p1.y, p2.x, p2.y, p3.x, p3.y)
 
+# Store data about a physics contact
 class Contact():
     def __init__(self, bodyA, bodyB, pA, pB, normal):
         self.bodyA = bodyA
@@ -93,6 +97,7 @@ class Contact():
         self.pB = pB
         self.normal = normal
 
+# Get all contacts between two rigid bodies
 def getContactsToTerrain(bodyA, bodyB):
     contacts = []
     pAs = [bodyA.localToWorld(vertex) for vertex in bodyA.vertices]
@@ -122,6 +127,7 @@ def getContactsToTerrain(bodyA, bodyB):
 
     return contacts
 
+# Basic vector class definition
 class Vector():
     def __init__(self, *args):
         if (isinstance(args[0], tuple)):
@@ -210,6 +216,7 @@ class Vector():
     def toInt(self):
         return Vector(int(self.x), int(self.y))
 
+# Turns position in meter to pixels
 class Camera():
     def __init__(self):
         self.position = Vector((0, 0))
@@ -221,6 +228,7 @@ class Camera():
     def worldToScreenFast(self, pos):
         return (Vector(WIDTH, HEIGHT) / 2 + (-self.position + pos) * self.scale * Vector(1, -1))
 
+# Basic particle system
 class ParticleSystem():
     def __init__(self, position):
         self.position = position
@@ -344,16 +352,20 @@ class TargetArrow():
         ]
 
     def render(self, camera):
+        # Turn position to screen space
         origSp = camera.worldToScreen(self.target.position + self.positionOffset + Vector(0, 0.5 * math.sin(pygame.time.get_ticks() / 500)))
         sp = origSp.copy()
 
+        # Clamp screen position inside screen with padding
         sp.x = clamp(sp.x, self.padding, WIDTH - self.padding)
         sp.y = clamp(sp.y, self.padding, HEIGHT - self.padding)
         
+        # Point towards target
         angle = math.atan2(sp.y - origSp.y, sp.x - origSp.x) + math.pi / 2
         if abs(sp.x - origSp.x) < 1e-4 and abs(sp.y - origSp.y) < 1e-4:
             angle = 0
 
+        # Turn vertices into screen space and render
         pygame.draw.polygon(screen, self.color, [(Vector.rotate(x, angle) + sp).toTuple() for x in self.vertices])
 
 class LandingPlatform(Rigidbody):
@@ -384,6 +396,7 @@ class Terrain(Rigidbody):
 
         position = Vector(-length * scale / 2, -5)
 
+        # Generate a row of vertices with random height according to perlin noise
         vertices = []
         for i in range(length):
             vertices.append(Vector(i * scale, noise(i * scale / 200) * 20))
@@ -405,10 +418,13 @@ class Terrain(Rigidbody):
         return self.position + pos
 
     def render(self, camera):
+        # Local to screen space
         screenPoints = [camera.worldToScreen(self.position + vertex).toTuple() for vertex in self.vertices]
+        # Keep vertices inside screen
         screenPoints = [point for point in screenPoints if point[0] > 0 and point[0] > 0 and point[0] < WIDTH and point[1] < HEIGHT]
         
         if len(screenPoints) > 0:
+            # Fill edges of screen
             screenPoints.append((WIDTH, screenPoints[-1][1]))
             screenPoints.append((WIDTH, HEIGHT))
             screenPoints.append((0, HEIGHT))
@@ -431,6 +447,7 @@ class Thruster():
 
     def render(self, camera):
         if self.active:
+            # Choose color according to normal or nitro
             color1 = (255, 50, 0)
             color2 = (255, 150, 0)
             if self.mode == 1:
@@ -491,17 +508,20 @@ class Lander(Rigidbody):
             self.addForceAtPosition(self.localToWorld(thruster.position), self.up() * force)
 
     def update(self, dt):
+        # Count how many seconds you are stationary on the platform
         if not self.crashed and self.touchingGround and self.velocity.length() < 0.1 and abs(self.angularVelocity) < 0.01:
             self.landedTimer += dt
         else:
             self.landedTimer = 0
         
+        # Detect landing
         if self.landedTimer > 2 and not self.landed:
             scoreHandler.addScore(ScoreHandler.ScoreMessage("Landed", 500))
             self.landed = True
             timer.paused = True
             self.static = True
             
+            # Save highscores
             global savedData
             if not shelfHasKey(savedData, "lowestTime") or timer.time < savedData["lowestTime"]:
                 savedData["lowestTime"] = timer.time
@@ -509,17 +529,22 @@ class Lander(Rigidbody):
             if not shelfHasKey(savedData, "highestScore") or scoreHandler.score > savedData["highestScore"]:
                 savedData["highestScore"] = scoreHandler.score
 
+        # Detect when doing a flip
         if not self.crashed and abs(self.angle - self.scoreAngleOffset) > math.pi * 2:
             self.scoreAngleOffset = self.angle
             scoreHandler.addScore(ScoreHandler.ScoreMessage("Flip", 100))
 
+        # Decrease fuel according to force applied on lander (all force comes from thrusters so it's ok)
         self.fuel -= self.force.length() * 0.4 * dt
+        
+        # Run rigidbody simulation
         Rigidbody.update(self, dt)
 
     def render(self, camera):
         #worldPoints = [camera.worldToScreen(self.position + Vector.rotate(vertex, self.angle)).toTuple() for vertex in self.vertices]
         #pygame.draw.polygon(screen, (0, 255, 0), worldPoints)
 
+        # Draw rotated image
         p = camera.worldToScreen(self.position) - Vector(self.landerImage.get_width(), self.landerImage.get_height()) / 2
         rotatedImage = pygame.transform.rotate(self.landerImage, self.angle / math.pi * 180)
         newRect = rotatedImage.get_rect(center = self.landerImage.get_rect(topleft = p.toInt().toTuple()).center)
@@ -560,6 +585,7 @@ class ScoreHandler():
             self.yOffset = 0
 
     def render(self, position):
+        # Draw scores as a list
         i = 0
         for history in reversed(self.scoreHistory):
             output = "+" + str(history.score)
@@ -570,6 +596,7 @@ class ScoreHandler():
             drawText(output, (position + Vector(0, (i - self.yOffset) * 30)).toTuple(), WHITE if i == 0 else (100, 100, 100))
             i += 1
 
+# Keep track on game time
 class GameTimer():
     def __init__(self):
         self.timeOffset = pygame.time.get_ticks()
@@ -580,6 +607,7 @@ class GameTimer():
         self.time = 0
         self.timeOffset = pygame.time.get_ticks()
 
+    # Format millis into xx:xx:xxx
     def getFormattedTime(time):
         totalSeconds = int(time / 1000)
         minutes = int(totalSeconds / 60)
@@ -600,24 +628,33 @@ class GameTimer():
 def solveCollisions(dt):
     lander.touchingGround = False
 
+    # All contacts in current frame
     contacts = []
     for a in gameObjects:
         for b in gameObjects:
             if a != b:
                 contacts += getContactsToTerrain(a, b)
     
+    # Keep track of all lambda for every contact
     lambdaAccumulated = [0] * len(contacts)
+    
+    # Run solver multiple times for stiffer and more accurate solving
     for j in range(constraintIterations):
         for i in range(len(contacts)):
             c = contacts[i]
 
+            # Debug contact
             #pygame.draw.circle(screen, (0, 0, 255), camera.worldToScreen(c.pA).toInt().toTuple(), 5)
             #pygame.draw.circle(screen, (255, 0, 255), camera.worldToScreen(c.pB).toInt().toTuple(), 3)
 
+            # Check for valid contact
             if not math.isnan(c.pA.x) and not math.isnan(c.pB.x) and not (c.bodyA.static and c.bodyB.static):
+                # Static bodies should not count to mass etc.
                 bodyAMult = 0 if c.bodyA.static else 1
                 bodyBMult = 0 if c.bodyB.static else 1
 
+                # Matrix of directions of which to apply the velocity change in
+                # Found by deriving position contraint and extracting velocity. The other matrix is the jacobian. C´ = Jv
                 jacobian = [
                     c.normal.x * bodyAMult,
                     c.normal.y * bodyAMult,
@@ -627,8 +664,10 @@ def solveCollisions(dt):
                     -Vector.cross(c.pB - c.bodyB.position, c.normal) * bodyBMult
                 ]
 
+                # Rotate normal to get tangent
                 tangent = Vector(-c.normal.y, c.normal.x)
 
+                # Tangent instead of normal
                 jacobianFriction = [
                     tangent.x * bodyAMult,
                     tangent.y * bodyAMult,
@@ -656,12 +695,17 @@ def solveCollisions(dt):
                     c.bodyB.inertia
                 ]
 
+                # Position constraint
                 C = Vector.dot(c.pA - c.pB, c.normal)
+                # Bias to counteract precission errors and keep the constraint in place
                 bias = 0.5 / dt * (C if C < 0 else 0)
 
+                # Multiply jacobian and velocity component-wise
                 JVSum = sum([j * v for j, v in zip(jacobian, velocityMatrix)])
+                # (J^2)/m
                 denom = sum([j * j / m for j, m in zip(jacobian, masses)])
 
+                # Strength of velocity change
                 λ = -(JVSum + bias) / denom
 
                 if lambdaAccumulated[i] + λ < 0:
@@ -670,11 +714,15 @@ def solveCollisions(dt):
                 lambdaAccumulated[i] += λ
 
                 if c.bodyA == lander or c.bodyB == lander:
+                    # Detect if lander is touching any platform assigned as landing target
                     if (isinstance(c.bodyA, LandingPlatform) and c.bodyA.isTarget) or (isinstance(c.bodyB, LandingPlatform) and c.bodyB.isTarget):
                         lander.touchingGround = True
+                        
+                    # If the impulse on the lander is to high we have crashed
                     if λ > lander.maxImpulse:
                         lander.crashed = True
 
+                # Integrate velocity
                 c.bodyA.velocity.x += jacobian[0] * λ / c.bodyA.mass
                 c.bodyA.velocity.y += jacobian[1] * λ / c.bodyA.mass
                 c.bodyA.angularVelocity += jacobian[2] * λ / c.bodyA.inertia
@@ -682,13 +730,18 @@ def solveCollisions(dt):
                 c.bodyB.velocity.y += jacobian[4] * λ / c.bodyB.mass
                 c.bodyB.angularVelocity += jacobian[5] * λ / c.bodyB.inertia
 
+                # Solve another contraint for friction
                 JVSum = sum([j * v for j, v in zip(jacobianFriction, velocityMatrix)])
                 denom = sum([j * j / m for j, m in zip(jacobianFriction, masses)])
 
+                # Friction coef.
                 friction = c.bodyA.friction * c.bodyB.friction
+                # No bias needed
                 λFriction = -JVSum / denom
+                # Friction impulse can not be higher than normal_impulse * u
                 λFriction = clamp(λFriction, -friction * λ, friction * λ)
 
+                # Integrate
                 c.bodyA.velocity.x += jacobianFriction[0] * λFriction / c.bodyA.mass
                 c.bodyA.velocity.y += jacobianFriction[1] * λFriction / c.bodyA.mass
                 c.bodyA.angularVelocity += jacobianFriction[2] * λFriction / c.bodyA.inertia
@@ -740,6 +793,7 @@ def drawUI():
         rt = textRender.get_rect()
         screen.blit(textRender, dest=(WIDTH / 2 - rt.width / 2, HEIGHT / 2 - rt.height / 2))
 
+# Pygame doesn't have buttons
 class PygameButton():
     def __init__(self, screen, rect, text, **kwargs):
         self.screen = screen
